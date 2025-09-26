@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>4-in-a-Row — Multiplayer</title>
+  <style>
+    :root {
+      --cell: min(calc(98vw / 8), calc(98vh / 8), 36px);
+      --accent: #0ea5e9;
+      --bg: linear-gradient(180deg,#f6f8ff,#eef2ff);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      font-family:Inter,system-ui,Segoe UI,Arial;
+      background:var(--bg);
+      color:#0f172a;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      padding:10px;
+      gap:10px;
+    }
+    header{width:100%;max-width:1100px;display:flex;justify-content:space-between;align-items:center}
+    h1{font-size:18px;margin:0}
+    .sub{font-size:13px;color:#475569}
+
+    #wrap{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;justify-content:center;width:100%;max-width:1100px}
+    #board{
+      display:grid;
+      grid-template-columns:repeat(8,var(--cell));
+      grid-template-rows:repeat(8,var(--cell));
+      gap:4px;
+      background:#2b2f3a;padding:6px;border-radius:10px;
+      box-shadow:0 6px 18px rgba(2,6,23,0.08);
+      touch-action:manipulation;
+    }
+    .cell{
+      width:var(--cell);height:var(--cell);
+      background:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;
+      cursor:pointer;transition:transform .08s ease,box-shadow .12s;
+      user-select:none;
+    }
+    .cell:active{transform:translateY(1px)}
+    .black,.white{width:76%;height:76%;border-radius:50%;box-shadow:0 1px 0 rgba(0,0,0,0.06) inset}
+    .black{background:#0b0b0b;border:2px solid #333333}
+    .white{background:#016ca6;border:2px solid #83b9ff}
+
+    #panel{min-width:220px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+    #status{font-weight:700}
+    #players{font-size:13px;color:#334155}
+    #controls{display:flex;gap:8px;flex-wrap:wrap}
+    button{padding:8px 10px;border:0;border-radius:8px;background:var(--accent);color:#042a2b;font-weight:600;cursor:pointer}
+    button.secondary{background:#e6f7ff;color:#034054}
+    footer{color:#475569;font-size:13px;text-align:center;width:100%}
+
+    .glow{box-shadow:0 0 0 3px rgba(250,204,21,0.22),0 8px 18px rgba(2,6,23,0.12)}
+
+    @media (max-width:720px){
+      :root{--cell: calc(78vw / 8)}
+      #panel{width:100%;align-items:center}
+      #wrap{flex-direction:column;align-items:center}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>4-in-a-Row — Multiplayer (Gravity)</h1>
+      <div class="sub">Place pieces into columns. Bottom-most empty slot rule applies. First to get 3 in a row wins.</div>
+    </div>
+    <div id="me" class="sub">Connecting...</div>
+  </header>
+
+  <div id="wrap">
+    <div id="board" aria-label="game board" role="grid"></div>
+
+    <div id="panel">
+      <div id="status">Waiting for assignment...</div>
+      <div id="players">Black: — | White: —</div>
+      <div id="controls">
+        <button id="reset">Restart</button>
+        <button id="hint" class="secondary">Show last</button>
+      </div>
+      <div style="font-size:13px;color:#334155">
+        Tip: Open the page on two devices/browsers to play. Additional visitors will be spectators.
+      </div>
+    </div>
+  </div>
+
+  <footer>Built with Socket.IO • Server must be run locally (node server.js)</footer>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const SIZE = 8;
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const playersEl = document.getElementById('players');
+    const meEl = document.getElementById('me');
+    const resetBtn = document.getElementById('reset');
+    const hintBtn = document.getElementById('hint');
+
+    const socket = io();
+
+    let myRole = null; // 'black'|'white'|'spectator'
+    let grid = Array.from({length: SIZE}, () => Array(SIZE).fill(null));
+    let currentPlayer = 'black';
+    let gameOver = false;
+    let lastMove = null;
+
+    // Create board cells
+    function createBoard() {
+      boardEl.innerHTML = '';
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.dataset.r = r;
+          cell.dataset.c = c;
+          cell.addEventListener('click', () => handleCellClick(r, c));
+          boardEl.appendChild(cell);
+        }
+      }
+      renderGrid();
+    }
+
+    function renderGrid() {
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const el = boardEl.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+          el.innerHTML = '';
+          el.style.boxShadow = '';
+          const val = grid[r][c];
+          if (val === 'black' || val === 'white') {
+            const dot = document.createElement('div');
+            dot.className = val;
+            el.appendChild(dot);
+          }
+        }
+      }
+    }
+
+    function handleCellClick(r, c) {
+      if (!myRole) return;
+      if (myRole === 'spectator') {
+        alert('You are a spectator.');
+        return;
+      }
+      if (gameOver) return;
+      // send move to server; server will validate gravity and turn
+      socket.emit('makeMove', { r, c });
+    }
+
+    // Socket handlers
+    socket.on('connect', () => {
+      meEl.textContent = 'Connected';
+    });
+
+    socket.on('playerAssigned', (role) => {
+      myRole = role;
+      statusEl.textContent = role === 'spectator' ? 'You are a spectator' : `You are Player ${role}`;
+    });
+
+    socket.on('playerList', ({ black, white }) => {
+      const b = black ? 'Connected' : '—';
+      const w = white ? 'Connected' : '—';
+      playersEl.textContent = `Black: ${b} | White: ${w}`;
+    });
+
+    socket.on('gameState', (state) => {
+      grid = state.grid;
+      currentPlayer = state.currentPlayer;
+      gameOver = state.gameOver;
+      updateStatus();
+      createBoard();
+    });
+
+    socket.on('updateBoard', ({ r, c, player }) => {
+      grid[r][c] = player;
+      lastMove = { r, c };
+      renderGrid();
+    });
+
+    socket.on('turnChange', (player) => {
+      currentPlayer = player;
+      updateStatus();
+    });
+
+    socket.on('gameOver', ({ winner }) => {
+      gameOver = true;
+      statusEl.textContent = `Player ${winner} wins! 🎉`;
+      highlightWinCells(winner);
+    });
+
+    socket.on('invalid', (msg) => {
+      // brief feedback
+      console.warn('Invalid action:', msg);
+      flashStatus(msg);
+    });
+
+    // UI helpers
+    function updateStatus() {
+      if (gameOver) return;
+      if (myRole === 'spectator') {
+        statusEl.textContent = `Spectating — ${currentPlayer}'s turn`;
+      } else {
+        statusEl.textContent = (myRole === currentPlayer) ? `Your turn (${currentPlayer})` : `Opponent's turn (${currentPlayer})`;
+      }
+    }
+
+    function flashStatus(text) {
+      const prev = statusEl.textContent;
+      statusEl.textContent = text;
+      setTimeout(() => updateStatus(), 900);
+    }
+
+    function highlightWinCells(winner) {
+      // Visual: highlight all winner cells that are part of a 3 chain
+      // collect all winning triples by scanning grid
+      const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+      for (let r=0;r<SIZE;r++){
+        for (let c=0;c<SIZE;c++){
+          if (grid[r][c] !== winner) continue;
+          for (const [dr,dc] of dirs){
+            const cells = [[r,c]];
+            let rr=r+dr, cc=c+dc;
+            while (rr>=0 && rr<SIZE && cc>=0 && cc<SIZE && grid[rr][cc]===winner){
+              cells.push([rr,cc]); rr+=dr; cc+=dc;
+            }
+            // check backwards too
+            rr=r-dr; cc=c-dc;
+            while (rr>=0 && rr<SIZE && cc>=0 && cc<SIZE && grid[rr][cc]===winner){
+              cells.unshift([rr,cc]); rr-=dr; cc-=dc;
+            }
+            if (cells.length >= 4) {
+              // highlight first contiguous 4 in this run
+              for (let i=0;i<cells.length;i++){
+                if (i+2 < cells.length){
+                  const trio = [cells[i], cells[i+1], cells[i+2]];
+                  trio.forEach(([ar,ac])=>{
+                    const el = boardEl.querySelector(`.cell[data-r="${ar}"][data-c="${ac}"]`);
+                    if (el) el.classList.add('glow');
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    resetBtn.addEventListener('click', () => {
+      // Request a restart (server will reset and broadcast)
+      socket.emit('restart');
+    });
+
+    hintBtn.addEventListener('click', () => {
+      if (!lastMove) return;
+      const el = boardEl.querySelector(`.cell[data-r="${lastMove.r}"][data-c="${lastMove.c}"]`);
+      if (!el) return;
+      const orig = el.style.transform;
+      el.style.transform = 'scale(1.08)';
+      setTimeout(()=> el.style.transform = orig, 300);
+    });
+
+    // init
+    createBoard();
+  </script>
+</body>
+</html>
