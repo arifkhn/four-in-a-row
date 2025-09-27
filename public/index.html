@@ -104,8 +104,11 @@
 
     const socket = io();
 
-    const pathParts = window.location.pathname.split("/");
-    const roomId = pathParts[2]; // /room/:id
+
+    // robust roomId extraction
+    const pathParts = window.location.pathname.split("/").filter(Boolean); // remove empty parts
+    const roomId = pathParts[pathParts.length - 1]; // last element (works for /room/<id> and /room/<id>/)
+
 
     socket.emit("joinRoom", roomId);
 
@@ -114,9 +117,12 @@
       socket.emit("makeMove", { roomId, r, c });
     }
 
+
     resetBtn.addEventListener("click", () => {
+      // ensure we pass roomId so server can restart the correct room
       socket.emit("restart", roomId);
     });
+
 
 
     let myRole = null; // 'black'|'white'|'spectator'
