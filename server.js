@@ -12,7 +12,17 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 // Serve static client
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "landing.html")));
+
+// Serve landing page at root
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "landing.html"));
+});
+
+// Serve game page for any room
+app.get("/room/:id", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/index.html"));
+});
 
 const SIZE = 8;
 

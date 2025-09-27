@@ -104,6 +104,21 @@
 
     const socket = io();
 
+    const pathParts = window.location.pathname.split("/");
+    const roomId = pathParts[2]; // /room/:id
+
+    socket.emit("joinRoom", roomId);
+
+    function handleCellClick(r, c) {
+      if (!myRole || myRole === "spectator" || gameOver) return;
+      socket.emit("makeMove", { roomId, r, c });
+    }
+
+    resetBtn.addEventListener("click", () => {
+      socket.emit("restart", roomId);
+    });
+
+
     let myRole = null; // 'black'|'white'|'spectator'
     let grid = Array.from({length: SIZE}, () => Array(SIZE).fill(null));
     let currentPlayer = 'black';

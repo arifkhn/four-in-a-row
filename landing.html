@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>4-in-a-Row — Lobby</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      gap: 12px;
+      background: linear-gradient(180deg,#f6f8ff,#eef2ff);
+    }
+    input, button {
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+    button {
+      cursor: pointer;
+      background: #0ea5e9;
+      border: none;
+      font-weight: bold;
+      color: white;
+    }
+    .box {
+      display: flex;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Welcome to 4-in-a-Row</h1>
+  <button onclick="createRoom()">Create Room</button>
+
+  <div class="box">
+    <input id="roomIdInput" placeholder="Enter Room ID" />
+    <button onclick="joinRoom()">Join Room</button>
+  </div>
+
+  <script>
+    function createRoom() {
+      const id = Math.random().toString(36).substring(2, 8);
+      window.location.href = `/room/${id}`;
+    }
+    function joinRoom() {
+      const id = document.getElementById("roomIdInput").value.trim();
+      if (id) {
+        window.location.href = `/room/${id}`;
+      } else {
+        alert("Please enter a room ID.");
+      }
+    }
+  </script>
+</body>
+</html>
