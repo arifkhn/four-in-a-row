@@ -112,18 +112,34 @@
 
     socket.emit("joinRoom", roomId);
 
-    function handleCellClick(r, c) {
-      if (!myRole || myRole === "spectator" || gameOver) return;
-      socket.emit("makeMove", { roomId, r, c });
+    function findGravityRow(c) {
+        // Iterate from the bottom row (SIZE - 1) up to the top row (0)
+        for (let r = SIZE - 1; r >= 0; r--) {
+            if (grid[r][c] === null) {
+                return r; // Found the lowest empty cell
+            }
+        }
+        return -1; // Column is full
     }
 
+    function handleCellClick(c) { // We only need the column index 'c'
+      if (!myRole) return;
+      if (myRole === 'spectator') {
+        alert('You are a spectator.');
+        return;
+      }
+      if (gameOver) return;
 
-    resetBtn.addEventListener("click", () => {
-      // ensure we pass roomId so server can restart the correct room
-      socket.emit("restart", roomId);
-    });
+        // --- Gravity Rule Implementation ---
+        const r = findGravityRow(c);
+        if (r === -1) {
+            flashStatus('Column is full!');
+            return;
+        }
+      socket.emit('makeMove', { r, c });
+    }
 
-
+  
 
     let myRole = null; // 'black'|'white'|'spectator'
     let grid = Array.from({length: SIZE}, () => Array(SIZE).fill(null));
@@ -140,11 +156,19 @@
           cell.className = 'cell';
           cell.dataset.r = r;
           cell.dataset.c = c;
-          cell.addEventListener('click', () => handleCellClick(r, c));
+          
           boardEl.appendChild(cell);
         }
       }
       renderGrid();
+
+      boardEl.addEventListener('click', (event) => {
+          const cell = event.target.closest('.cell');
+          if (cell) {
+              const c = parseInt(cell.dataset.c, 10);
+              handleCellClick(c);
+          }
+      });
     }
 
     function renderGrid() {
@@ -163,16 +187,7 @@
       }
     }
 
-    function handleCellClick(r, c) {
-      if (!myRole) return;
-      if (myRole === 'spectator') {
-        alert('You are a spectator.');
-        return;
-      }
-      if (gameOver) return;
-      // send move to server; server will validate gravity and turn
-      socket.emit('makeMove', { r, c });
-    }
+
 
     // Socket handlers
     socket.on('connect', () => {
@@ -204,9 +219,9 @@
       renderGrid();
     });
 
-    socket.on('turnChange', (player) => {
-      currentPlayer = player;
-      updateStatus();
+    socket.on('turn', ({ currentPlayer: player }) => { // Server sends an object { currentPlayer: '...' }
+        currentPlayer = player;
+        updateStatus();
     });
 
     socket.on('gameOver', ({ winner }) => {
@@ -224,10 +239,22 @@
     // UI helpers
     function updateStatus() {
       if (gameOver) return;
+
+      if (!playersEl.textContent.includes('Connected')) {
+          // This is a catch-all if we haven't received playerList yet
+          statusEl.textContent = "Waiting for an opponent...";
+          return;
+      }
+
       if (myRole === 'spectator') {
         statusEl.textContent = `Spectating — ${currentPlayer}'s turn`;
       } else {
-        statusEl.textContent = (myRole === currentPlayer) ? `Your turn (${currentPlayer})` : `Opponent's turn (${currentPlayer})`;
+        // Determine if it's the current player's turn
+          if (myRole === currentPlayer) {
+              statusEl.textContent = `Your turn (${currentPlayer})`;
+          } else {
+              statusEl.textContent = `Opponent's turn (${currentPlayer})`;
+          }
       }
     }
 
@@ -272,10 +299,13 @@
       }
     }
 
-    resetBtn.addEventListener('click', () => {
-      // Request a restart (server will reset and broadcast)
-      socket.emit('restart');
+    resetBtn.addEventListener("click", () => {
+      // ensure we pass roomId so server can restart the correct room
+      socket.emit("restart", roomId);
     });
+
+
+
 
     hintBtn.addEventListener('click', () => {
       if (!lastMove) return;

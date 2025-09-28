@@ -41,6 +41,25 @@ const rooms = {}; // rooms[roomId] = { grid, players, roleById, currentPlayer, g
 function createEmptyGrid() {
   return Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
 }
+
+function emitPlayerList(io, roomId, room) {
+    let blackPlayer = null;
+    let whitePlayer = null;
+    
+    // Find who is assigned Black and White roles
+    for (const playerId of room.players) {
+        if (room.roleById[playerId] === 'black') {
+            blackPlayer = playerId;
+        } else if (room.roleById[playerId] === 'white') {
+            whitePlayer = playerId;
+        }
+    }
+    // Send the connection status (player ID is truthy if connected)
+    io.to(roomId).emit("playerList", { black: blackPlayer, white: whitePlayer });
+}
+
+
+
 function ensureRoom(roomId) {
   if (!rooms[roomId]) {
     rooms[roomId] = {
@@ -89,6 +108,7 @@ io.on("connection", (socket) => {
       socket.join(roomId);
       socket.emit("playerAssigned", role);
       io.to(roomId).emit("roomInfo", { playersCount: room.players.length });
+      emitPlayerList(io, roomId, room);
       socket.emit("updateFull", { grid: room.grid, currentPlayer: room.currentPlayer, gameOver: room.gameOver });
       console.log(`[joinRoom] ${socket.id} joined ${roomId} as ${role}`);
       if (room.players.length === 2) {
@@ -102,8 +122,21 @@ io.on("connection", (socket) => {
       socket.emit("playerAssigned", role);
       socket.emit("updateFull", { grid: room.grid, currentPlayer: room.currentPlayer, gameOver: room.gameOver });
       io.to(roomId).emit("roomInfo", { playersCount: room.players.length });
+      emitPlayerList(io, roomId, room);
       console.log(`[joinRoom] ${socket.id} joined ${roomId} as spectator`);
     }
+
+    const blackPlayerId = room.roleById[room.players[0]] === 'black' ? room.players[0] : null;
+    const whitePlayerId = room.players.length > 1 && room.roleById[room.players[1]] === 'white' ? room.players[1] : null;
+
+    // Send the player list to all clients in the room
+    io.to(roomId).emit("playerList", { 
+        black: blackPlayerId, 
+        white: whitePlayerId 
+    });
+
+
+
   });
 
   // makeMove can receive { roomId, r, c } or just { r, c } (server will infer room)
@@ -123,6 +156,35 @@ io.on("connection", (socket) => {
     if (typeof r !== "number" || typeof c !== "number") return socket.emit("invalid", "Invalid cell coordinates.");
     if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return socket.emit("invalid", "Invalid cell.");
     if (room.grid[r][c]) return socket.emit("invalid", "Cell already occupied.");
+
+
+
+
+    // --- NEW: Server-Side Gravity Rule Check ---
+    let gravityRow = -1;
+    for (let i = SIZE - 1; i >= 0; i--) {
+        if (room.grid[i][c] === null) {
+            gravityRow = i;
+            break;
+        }
+    }
+
+    if (gravityRow === -1) {
+        return socket.emit("invalid", "Column is full.");
+    }
+    
+    // Check if the move is actually placed in the lowest available slot
+    if (r !== gravityRow) {
+        // Correct the move to the actual gravity position before processing
+        // OR reject the move and inform the client to resend with the correct 'r'
+        // For simplicity, we'll auto-correct the row and proceed, trusting the client's column choice.
+        r = gravityRow; 
+        // If you prefer strict validation, uncomment the line below and comment out the 'r = gravityRow' line:
+        // return socket.emit("invalid", "Must place piece in the lowest available row.");
+    }
+
+
+
 
     room.grid[r][c] = role;
     io.to(roomId).emit("updateBoard", { r, c, player: role });
@@ -147,7 +209,8 @@ io.on("connection", (socket) => {
     room.grid = createEmptyGrid();
     room.currentPlayer = "black";
     room.gameOver = false;
-    io.to(roomId).emit("restart", { grid: room.grid, currentPlayer: room.currentPlayer });
+    // server.js (Corrected line)
+    io.to(roomId).emit("gameState", { grid: room.grid, currentPlayer: room.currentPlayer, gameOver: room.gameOver });
     console.log(`[restart] room ${roomId} restarted`);
   });
 
@@ -162,14 +225,17 @@ io.on("connection", (socket) => {
         io.to(roomId).emit("roomInfo", { playersCount: room.players.length });
         room.gameOver = true;
         io.to(roomId).emit("playerLeft", { id: socket.id });
+        emitPlayerList(io, roomId, room);
         console.log(`[disconnect] removed ${socket.id} from ${roomId}`);
 
         // if room is empty (no sockets in adapter), delete to free memory
-        const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
-        if (!socketsInRoom || socketsInRoom.size === 0) {
-          delete rooms[roomId];
-          console.log("[cleanup] deleted empty room", roomId);
-        }
+        setTimeout(() => {
+            const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+            if (!socketsInRoom || socketsInRoom.size === 0) {
+              delete rooms[roomId];
+              console.log("[cleanup] deleted empty room", roomId);
+            }
+          }, 100);
       }
     }
   });
