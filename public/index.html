@@ -270,6 +270,22 @@
 
                     // Check 1: Ensure the stream has an audio track
                     const audioTrack = localStream.getAudioTracks()[0];
+
+
+                    if (peerConnection) {
+                        // Iterate through all currently active senders
+                        const senders = peerConnection.getSenders();
+                        senders.forEach(sender => {
+                            // Check if the sender's track is an audio track
+                            if (sender.track && sender.track.kind === 'audio') {
+                                // Remove the old track from the connection
+                                peerConnection.removeTrack(sender);
+                            }
+                        });
+                    }
+
+
+
                     if (audioTrack) {
                         // Check 2: Ensure the track is enabled before adding it to the connection
                         audioTrack.enabled = true; 
