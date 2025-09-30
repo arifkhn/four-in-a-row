@@ -139,7 +139,26 @@ io.on("connection", (socket) => {
 
   });
 
-  // makeMove can receive { roomId, r, c } or just { r, c } (server will infer room)
+  // New: Handle incoming text chat messages
+  socket.on("sendMessage", (payload) => {
+      // 1. Determine the room
+      let { roomId, message } = payload;
+      if (!roomId) roomId = findRoomForSocket(socket);
+      if (!roomId || !rooms[roomId] || !message) return;
+
+      // 2. Determine the sender's role/ID
+      const role = rooms[roomId].roleById[socket.id] || "spectator";
+      
+      // 3. Broadcast the message to all clients in the room
+      io.to(roomId).emit("chatMessage", {
+          senderRole: role, // 'black', 'white', or 'spectator'
+          senderId: socket.id,
+          message: message,
+          timestamp: Date.now()
+      });
+  });
+
+ // makeMove can receive { roomId, r, c } or just { r, c } (server will infer room)
   socket.on("makeMove", (payload) => {
     if (!payload) return socket.emit("invalid", "Bad move payload");
     let { roomId, r, c } = payload;

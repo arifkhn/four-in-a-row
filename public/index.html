@@ -87,6 +87,16 @@
       <div style="font-size:13px;color:#334155">
         Tip: Open the page on two devices/browsers to play. Additional visitors will be spectators.
       </div>
+      <div id="chat-box" style="width: 100%; max-height: 200px; overflow-y: scroll; border: 1px solid #ddd; padding: 5px; border-radius: 6px; background: #fff; margin-top: 10px;">
+          </div>
+      <div id="chat-input-wrap" style="width: 100%; display: flex; gap: 5px;">
+          <input type="text" id="chat-input" placeholder="Type a message..." style="flex-grow: 1; padding: 8px; border-radius: 6px; border: 1px solid #ccc;">
+          <button id="send-chat" style="padding: 8px 10px; background: var(--accent); color: white;">Send</button>
+      </div>
+      <div id="voice-controls" style="width: 100%; display: flex; gap: 8px; margin-top: 10px;">
+          <button id="toggle-mic" class="secondary" style="background: #e6f7ff; color: #034054;">🎙️ Mic OFF</button>
+          <button id="toggle-speaker" class="secondary" style="background: #e6f7ff; color: #034054;">🔊 Speaker ON</button>
+      </div>
     </div>
   </div>
 
@@ -101,6 +111,15 @@
     const meEl = document.getElementById('me');
     const resetBtn = document.getElementById('reset');
     const hintBtn = document.getElementById('hint');
+    const chatBoxEl = document.getElementById('chat-box');
+    const chatInputEl = document.getElementById('chat-input');
+    const sendChatBtn = document.getElementById('send-chat');
+    const toggleMicBtn = document.getElementById('toggle-mic');
+    const toggleSpeakerBtn = document.getElementById('toggle-speaker');
+
+    let localStream = null;
+    let micOn = false;
+    let speakerOn = true;
 
     const socket = io();
 
@@ -139,7 +158,29 @@
       socket.emit('makeMove', { r, c });
     }
 
-  
+
+
+
+    // Function to handle sending the message
+    function sendChatMessage() {
+        const message = chatInputEl.value.trim();
+        if (message) {
+            // Find the room ID (it's already defined globally as 'roomId')
+            socket.emit('sendMessage', { roomId, message });
+            chatInputEl.value = ''; // Clear the input
+        }
+    }
+
+    // Event listeners for chat
+    sendChatBtn.addEventListener('click', sendChatMessage);
+    chatInputEl.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendChatMessage();
+        }
+    });
+
+
+
 
     let myRole = null; // 'black'|'white'|'spectator'
     let grid = Array.from({length: SIZE}, () => Array(SIZE).fill(null));
@@ -189,6 +230,59 @@
 
 
 
+
+    // Function to control the local microphone
+    toggleMicBtn.addEventListener('click', () => {
+        if (micOn) {
+            // Turn OFF microphone
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            micOn = false;
+            toggleMicBtn.textContent = '🎙️ Mic OFF';
+            toggleMicBtn.style.backgroundColor = '#e6f7ff';
+        } else {
+            // Turn ON microphone and request access
+            navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+                .then(stream => {
+                    localStream = stream;
+                    
+                    // Conceptual: send this stream to peers via WebRTC logic (omitted here)
+                    
+                    micOn = true;
+                    toggleMicBtn.textContent = '🎙️ Mic ON';
+                    toggleMicBtn.style.backgroundColor = 'lightgreen';
+                })
+                .catch(err => {
+                    alert('Microphone access denied or failed: ' + err.name);
+                });
+        }
+    });
+
+
+    // Function to conceptually control the speaker (mute/unmute incoming audio)
+    toggleSpeakerBtn.addEventListener('click', () => {
+        speakerOn = !speakerOn;
+        
+        if (speakerOn) {
+            toggleSpeakerBtn.textContent = '🔊 Speaker ON';
+            toggleSpeakerBtn.style.backgroundColor = '#e6f7ff';
+            
+            // Conceptual: Unmute all remote audio elements here
+            // Example: document.querySelectorAll('audio').forEach(a => a.volume = 1);
+            
+        } else {
+            toggleSpeakerBtn.textContent = '🔇 Speaker OFF';
+            toggleSpeakerBtn.style.backgroundColor = 'red';
+
+            // Conceptual: Mute all remote audio elements here
+            // Example: document.querySelectorAll('audio').forEach(a => a.volume = 0);
+        }
+    });
+
+
+
     // Socket handlers
     socket.on('connect', () => {
       meEl.textContent = 'Connected';
@@ -204,6 +298,23 @@
       const w = white ? 'Connected' : '—';
       playersEl.textContent = `Black: ${b} | White: ${w}`;
     });
+
+
+    socket.on('chatMessage', ({ senderRole, message }) => {
+        const msgEl = document.createElement('div');
+        const roleStyle = senderRole === 'black' ? 'font-weight: bold; color: #0b0b0b;' :
+                          senderRole === 'white' ? 'font-weight: bold; color: #016ca6;' :
+                          'color: #475569;';
+
+        msgEl.innerHTML = `<span style="${roleStyle}">[${senderRole}]</span>: ${message}`;
+        chatBoxEl.appendChild(msgEl);
+        
+        // Scroll to the bottom
+        chatBoxEl.scrollTop = chatBoxEl.scrollHeight;
+    });
+
+
+
 
     socket.on('gameState', (state) => {
       grid = state.grid;
