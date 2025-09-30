@@ -158,6 +158,49 @@ io.on("connection", (socket) => {
       });
   });
 
+
+
+  // 1. Relays the SDP Offer/Answer between the two players
+  // server.js (Inside io.on("connection", (socket) => { ... ))
+
+  // Helper function to find the other player in the room
+  function getOtherPlayerId(room, senderId) {
+      // Only interested in the two player roles ('black' and 'white'), not spectators
+      const playerIds = room.players.filter(id => room.roleById[id] !== 'spectator');
+      return playerIds.find(id => id !== senderId);
+  }
+
+  // 1. Relays SDP Offer/Answer
+  socket.on('signaling', (payload) => {
+      let { roomId, signal } = payload;
+      if (!roomId) roomId = findRoomForSocket(socket);
+      if (!roomId || !rooms[roomId]) return;
+
+      const otherPlayerId = getOtherPlayerId(rooms[roomId], socket.id);
+      
+      // Forward the signal to the other player only
+      if (otherPlayerId) {
+          io.to(otherPlayerId).emit('signaling', { senderId: socket.id, signal });
+      }
+  });
+
+  // 2. Relays ICE candidates (network path info)
+  socket.on('iceCandidate', (payload) => {
+      let { roomId, candidate } = payload;
+      if (!roomId) roomId = findRoomForSocket(socket);
+      if (!roomId || !rooms[roomId]) return;
+
+      const otherPlayerId = getOtherPlayerId(rooms[roomId], socket.id);
+      
+      // Forward the candidate to the other player only
+      if (otherPlayerId) {
+          io.to(otherPlayerId).emit('iceCandidate', { senderId: socket.id, candidate });
+      }
+  });
+
+
+
+
  // makeMove can receive { roomId, r, c } or just { r, c } (server will infer room)
   socket.on("makeMove", (payload) => {
     if (!payload) return socket.emit("invalid", "Bad move payload");

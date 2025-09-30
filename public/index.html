@@ -248,6 +248,42 @@
             navigator.mediaDevices.getUserMedia({ audio: true, video: false })
                 .then(stream => {
                     localStream = stream;
+                    peerConnection = new RTCPeerConnection(iceServers);
+                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+
+                    peerConnection.ontrack = (event) => {
+                        // Attach the received stream to the audio element
+                        if (remoteAudio.srcObject !== event.streams[0]) {
+                            remoteAudio.srcObject = event.streams[0];
+                            // It's not visible, but it will output audio
+                            document.body.appendChild(remoteAudio); 
+                        }
+                    };
+
+                    // 4. Implement ICE Candidate Exchange
+                    peerConnection.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            // Send our network info (ICE candidate) to the other peer via the server
+                            socket.emit('iceCandidate', { roomId, candidate: event.candidate });
+                        }
+                    };
+
+
+
+                    // 5. Start the connection process (only the 'black' player initiates the call)
+                    if (myRole === 'black') { 
+                        // Create the initial connection offer
+                        peerConnection.createOffer()
+                            .then(offer => peerConnection.setLocalDescription(offer))
+                            .then(() => {
+                                // Send the offer to the other peer via the server
+                                socket.emit('signaling', { roomId, signal: peerConnection.localDescription });
+                            })
+                            .catch(error => console.error("Error creating or sending offer:", error));
+                    }
+
+
 
                     // IMPORTANT: Ensure the audio track is ENABLED
                     const audioTrack = stream.getAudioTracks()[0];
@@ -318,6 +354,41 @@
         // Scroll to the bottom
         chatBoxEl.scrollTop = chatBoxEl.scrollHeight;
     });
+
+
+
+
+    socket.on('signaling', async ({ senderId, signal }) => {
+        if (!peerConnection) return; // Ignore if PC not set up
+
+        try {
+            if (signal.type === 'offer' && myRole === 'white') {
+                // Player 'white' receives the offer, sets it, and creates an answer
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                // Send the answer back to the 'black' player
+                socket.emit('signaling', { roomId, signal: peerConnection.localDescription });
+                
+            } else if (signal.type === 'answer' && myRole === 'black') {
+                // Player 'black' receives the answer and completes the handshake
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
+            }
+        } catch (error) {
+            console.error("Error handling signaling message:", error);
+        }
+    });
+
+    socket.on('iceCandidate', (payload) => {
+        if (payload.candidate && peerConnection) {
+            // Add the remote peer's network information
+            peerConnection.addIceCandidate(new RTCIceCandidate(payload.candidate))
+                .catch(error => console.error('Error adding received ICE candidate:', error));
+        }
+    });
+
+
 
 
 
