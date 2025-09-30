@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>4-in-a-Row — Multiplayer</title>
+  <audio id="remote-audio" autoplay playsinline></audio>
   <style>
     :root {
       --cell: min(calc(98vw / 8), calc(98vh / 8), 36px);
@@ -247,6 +248,10 @@
             navigator.mediaDevices.getUserMedia({ audio: true, video: false })
                 .then(stream => {
                     localStream = stream;
+
+                    // IMPORTANT: Ensure the audio track is ENABLED
+                    const audioTrack = stream.getAudioTracks()[0];
+                    if (audioTrack) audioTrack.enabled = true; 
                     
                     // Conceptual: send this stream to peers via WebRTC logic (omitted here)
                     
@@ -256,6 +261,7 @@
                 })
                 .catch(err => {
                     alert('Microphone access denied or failed: ' + err.name);
+                    console.error("Microphone Error:", err);
                 });
         }
     });
