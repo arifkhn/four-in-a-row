@@ -268,6 +268,24 @@
                     peerConnection = new RTCPeerConnection(iceServers);
                     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
+                    // Check 1: Ensure the stream has an audio track
+                    const audioTrack = localStream.getAudioTracks()[0];
+                    if (audioTrack) {
+                        // Check 2: Ensure the track is enabled before adding it to the connection
+                        audioTrack.enabled = true; 
+                        
+                        // Add the track to the peer connection
+                        // NOTE: Use addTrack for modern WebRTC, ensuring the track is added correctly
+                        peerConnection.addTrack(audioTrack, localStream);
+                    } else {
+                        console.error("Mobile device failed to get an audio track.");
+                        // You might want to show a user alert here
+                    }
+
+
+                    
+
+
 
                     peerConnection.ontrack = (event) => {
                         // Attach the received stream to the audio element
@@ -302,9 +320,7 @@
 
 
 
-                    // IMPORTANT: Ensure the audio track is ENABLED
-                    const audioTrack = stream.getAudioTracks()[0];
-                    if (audioTrack) audioTrack.enabled = true; 
+      
                     
                     // Conceptual: send this stream to peers via WebRTC logic (omitted here)
                     
